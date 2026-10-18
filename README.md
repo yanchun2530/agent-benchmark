@@ -1,6 +1,6 @@
 # agent_benchmark — 低/中/高三档 模型+Agent 基准包
 
-📌 **已跑结果**：低档 DS V4.1 Flash 2026-10-19 → [`RESULTS.md`](RESULTS.md)（成功率 78% / 22m44s / 557.7k token / 409 tok/s）
+📌 **低档实测（2026-10-19）**：[DS V4.1 Flash 与 Codex gpt-6-luna xhigh 对比](results/low-comparison-2026-10-19.md)；DS 原始记录见 [`RESULTS.md`](RESULTS.md)。
 
 测 **模型 × harness（opencode / codex / …）** 的组合：正确率（checker 判分）+ 速度（墙钟、tokens-per-solve）+（高档）真实仓库修复率。全部本地跑、可缩到单任务。
 
