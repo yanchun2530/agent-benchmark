@@ -1,0 +1,43 @@
+{
+  "_comment": "Harness CLI command templates. Placeholders: {model} {prompt} {workdir}. bin may be an absolute path, a $PATH name, or AUTO_OPENCODE (discovered).",
+  "opencode": {
+    "bin": "AUTO_OPENCODE",
+    "args": [
+      "run",
+      "--standalone",
+      "--auto",
+      "--format",
+      "json",
+      "--model",
+      "{model}",
+      "{prompt}"
+    ],
+    "default_model": "opencode/deepseek-v4.1-flash-free"
+  },
+  "codex": {
+    "bin": "codex",
+    "args": [
+      "exec",
+      "--cd",
+      "{workdir}",
+      "--model",
+      "{model}",
+      "--json",
+      "--skip-git-repo-check",
+      "-s",
+      "danger-full-access",
+      "{prompt}"
+    ],
+    "default_model": "gpt-5.5"
+  },
+  "dry-none": {
+    "bin": "",
+    "args": [],
+    "note": "negative control: does nothing, checker must fail"
+  },
+  "dry-solution": {
+    "bin": "",
+    "args": [],
+    "note": "selftest: overlays task solution/ onto the workspace, checker must pass"
+  }
+}

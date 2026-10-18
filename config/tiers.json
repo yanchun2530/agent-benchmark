@@ -1,0 +1,23 @@
+{
+  "low": {
+    "title": "低 — 合成迷你仓库（冒烟/回归用）",
+    "tasks": ["make-ci-green", "add-feature", "misleading-error"],
+    "trials": 3,
+    "timeout_min": 15,
+    "prompt_suffix": "\n\nWork autonomously in the current working directory (the project root).\nDo not modify test files. Stop when the task's stated success condition holds."
+  },
+  "mid": {
+    "title": "中 — Terminal-Bench 子集（真实终端/科学任务）",
+    "tasks": ["db-wal-recovery", "raman-fitting", "llm-inference-batching-scheduler"],
+    "trials": 1,
+    "timeout_min": 30,
+    "prompt_suffix": "\n\nWork autonomously in the current working directory (the project root).\nRead the task's instruction carefully, reproduce the issue, then fix it.\nStop when the task's stated success condition holds."
+  },
+  "high": {
+    "title": "高 — SWE-bench Verified mini（真实 GitHub issue）",
+    "tasks": [],
+    "instances": 5,
+    "timeout_min": 30,
+    "note": "handled by bin/swe_mini.py (fetch/run/eval)"
+  }
+}
