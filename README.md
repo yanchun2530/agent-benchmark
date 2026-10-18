@@ -36,6 +36,9 @@ bash bench.sh matrix --tier low --combos "opencode:m1,opencode:m2" --tasks make-
 
 > 可比性约定：**同档位、同任务集、同 trial 数**才放在一张表里比；不同 harness 用同一 `--tasks/--trials`。
 > 单组合复现只是特例（`--combos` 里只写一个即可）。
+>
+> 思考模式/变体：模型可写成 `provider/model#variant`（opencode CLI 语法），例如
+> `--model opencode/deepseek-v4.1-flash-free#max`；不同思考档位（如 `#max` vs `#medium`）**属于不同组合**，请分开统计。
 
 ## 快速开始
 

@@ -3,6 +3,7 @@
 | 项 | 值 |
 |---|---|
 | 被测模型 | **DeepSeek V4.1 Flash**（`opencode/deepseek-v4.1-flash-free`） |
+| 思考模式 | **max（开启）**；9 格共产生 **94,032** reasoning token（`out 106,910` 中含此项） |
 | Agent harness | **opencode v2.0.32**（`opencode run --standalone --auto --format json`） |
 | 机器 | AI-3090（4× RTX 3090，24GB；本基准为 API 模型，不占 GPU） |
 | 档位 | **低（low）**：3 题 × 3 trial = 9 格 |
@@ -15,7 +16,7 @@
 |---|---|
 | 🏆 成功率 | **7/9 = 78%** |
 | ⏱️ 总耗时 | **22m44s**（9 格，均 152s/格） |
-| 🪙 总 token | **557,719**（in 450,809 / out 106,910；cache 读 5,214,336） |
+| 🪙 总 token | **557,719**（in 450,809 / out 106,910，其中 reasoning 94,032；cache 读 5,214,336） |
 | ⚡ 速度 | **409 tok/s**（token 总量 ÷ 智能体墙钟） |
 
 > 口径：token 计 in+out（不含 cache 读）；速度分母为 agent 墙钟（含工具调用与文件操作时间）；
