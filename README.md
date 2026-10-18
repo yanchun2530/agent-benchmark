@@ -2,6 +2,8 @@
 
 📌 **低档实测（2026-10-19）**：[DS V4.1 Flash 与 Codex gpt-6-luna xhigh 对比](results/low-comparison-2026-10-19.md)；DS 原始记录见 [`RESULTS.md`](RESULTS.md)。
 
+📌 **三方交叉验证（2026-10-19）**：DS / Codex / DSH（deepseek-flash）三方对比与逐格数据 → [`results/low-comparison-3way-2026-10-19.md`](results/low-comparison-3way-2026-10-19.md)、[`results/dsh-low-2026-10-19.jsonl`](results/dsh-low-2026-10-19.jsonl)。
+
 测 **模型 × harness（opencode / codex / …）** 的组合：正确率（checker 判分）+ 速度（墙钟、tokens-per-solve）+（高档）真实仓库修复率。全部本地跑、可缩到单任务。
 
 ## 三档一览
