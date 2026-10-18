@@ -22,6 +22,18 @@
 > 口径：token 计 in+out（不含 cache 读）；速度分母为 agent 墙钟（含工具调用与文件操作时间）；
 > 成功率 = checker 判分 exit 0 的格数（非 agent 自述）；成本 $0（免费档模型）。
 
+## 四指标（分任务）
+
+| 任务 | 成功率 | 总耗时 | 总token | tok/s |
+|---|---|---|---|---|
+| make-ci-green | 3/3 = 100% | 10m23s | 212,713 | 342 |
+| add-feature | 2/3 = 67% | 5m43s | 169,081 | 493 |
+| misleading-error | 2/3 = 67% | 6m38s | 175,925 | 442 |
+| **合计** | **7/9 = 78%** | **22m44s** | **557,719** | **409** |
+
+> 快照文件：`results/summary-low.md`（总）、`results/summary-low-tasks.md`（分任务）。
+> 生成命令：`bash bench.sh summary --tier low [--by-task] --md <file>`
+
 ## 逐格明细
 
 | 题目 | trial | 结果 | 墙钟 | score | token(in/out) |

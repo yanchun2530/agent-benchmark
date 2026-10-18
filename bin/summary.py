@@ -91,6 +91,24 @@ def print_table(rows: list[dict]) -> None:
         )
 
 
+def print_task_table(rows: list[dict]) -> None:
+    """Four metrics per task + total (same-口径 comparability within a tier)."""
+    groups: dict[tuple, list[dict]] = {}
+    for r in rows:
+        groups.setdefault((r.get("tier") or "-", r.get("task") or "-"), []).append(r)
+    print("| 任务 | 成功率 | 总耗时 | 总token | tok/s |")
+    print("|---|---|---|---|---|")
+    for (tier, task), rs in sorted(groups.items()):
+        m = metrics(rs)
+        rate = "-" if m["rate"] is None else f"{m['solved']}/{m['graded']} = {m['rate']*100:.0f}%"
+        tps = "-" if m["tps"] is None else f"{m['tps']:,.0f}"
+        print(f"| {task} | {rate} | {hm(m['wall_s'])} | {m['tok_total']:,} | {tps} |")
+    t = metrics(rows)
+    rate = "-" if t["rate"] is None else f"{t['solved']}/{t['graded']} = {t['rate']*100:.0f}%"
+    tps = "-" if t["tps"] is None else f"{t['tps']:,.0f}"
+    print(f"| **合计** | **{rate}** | **{hm(t['wall_s'])}** | **{t['tok_total']:,}** | **{tps}** |")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--tier", default=None)
@@ -100,6 +118,8 @@ def main() -> int:
     ap.add_argument("--md", default=None, help="also write the block to this file")
     ap.add_argument("--by-combo", action="store_true",
                     help="comparison table: one row per (tier, harness, model)")
+    ap.add_argument("--by-task", action="store_true",
+                    help="four metrics per task + total")
     a = ap.parse_args()
 
     if a.results:
@@ -118,21 +138,19 @@ def main() -> int:
         print("no results yet")
         return 1
 
-    if a.by_combo:
-        if a.md:
-            import io
-            import contextlib
+    if a.by_task or a.by_combo:
+        import contextlib
+        import io
 
-            buf = io.StringIO()
-            with contextlib.redirect_stdout(buf):
-                print_table(rows)
-            block = buf.getvalue().rstrip("\n")
-            print(block)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            print_task_table(rows) if a.by_task else print_table(rows)
+        block = buf.getvalue().rstrip("\n")
+        print(block)
+        if a.md:
             with open(a.md, "w") as f:
                 f.write(block + "\n")
             print(f"\n(written -> {a.md})")
-            return 0
-        print_table(rows)
         return 0
 
     m = metrics(rows)
