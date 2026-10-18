@@ -39,7 +39,8 @@
 
 - **抖动明显**：同一题、同参数多次跑，既有 46s 提前放弃（`add-feature t3` 只过 40% 测试），也有 267s 死磕成功；`misleading-error` 2 次中 1 次失败。n=1 或 n=3 的数字只能当冒烟，做对比请 ≥3 trial 并看分布。
 - 该模型 token 消耗中 cache 读占比极高（5.2M cache vs 0.56M in+out），说明多轮 agent 循环中前缀复用充分 → 真实计费成本会显著低于标称。
-- 复现：`bash bench.sh low --harness opencode --model opencode/deepseek-v4.1-flash-free --trials 3`，随后 `bash bench.sh summary --tier low`。
+- 复现（同配置）：`bash bench.sh low --harness opencode --model opencode/deepseek-v4.1-flash-free --trials 3`，随后 `bash bench.sh summary --tier low`。
+- 对比（换模型/harness）：`bash bench.sh matrix --tier low --combos "opencode:<模型A>,opencode:<模型B>,codex:<模型C>" --trials 3`，跑完自动出四指标对比表（或随时 `bash bench.sh compare --tier low`）。
 
 ## 其他档位状态（截至 2026-10-19）
 

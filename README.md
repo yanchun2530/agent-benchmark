@@ -13,6 +13,30 @@
 | **高** `high` | **SWE-bench Verified mini**：50 条真实 GitHub issue（django+sphinx），默认取 5 条 | 5 条 | 1–3 h（+官方评测 docker） | 视模型 |
 | 附加 `speed` | 任意 OpenAI 兼容端点：TTFT / TPOT / output tok-s | 3 提示 × N 轮 | < 5 min | 极小 |
 
+## 对比不同模型 / 不同 harness（本包的主要用法）
+
+```bash
+# 一条命令跑多条组合（同一档位、同一 trial 数 → 严格可比），跑完自动出四指标对比表
+bash bench.sh matrix --tier low \
+  --combos "opencode:opencode/deepseek-v4.1-flash-free,opencode:opencode/glm-5.3-flash-free,codex:gpt-5.5" \
+  --trials 3
+
+# 只看对比表（随时可看，数据来自 results/<tier>.jsonl 累积）
+bash bench.sh compare --tier low
+
+# 组合格式: harness:model，逗号分隔；也可只跑部分任务加快：
+bash bench.sh matrix --tier low --combos "opencode:m1,opencode:m2" --tasks make-ci-green --trials 3
+```
+
+输出即四指标对比表（每行 = 一个 模型×harness 组合）：
+
+| 档 | harness | 模型 | 格数 | 成功率 | 总耗时 | 总token | tok/s |
+|---|---|---|---|---|---|---|---|
+| low | opencode | opencode/deepseek-v4.1-flash-free | 9 | 7/9 = 78% | 22m44s | 557,719 | 409 |
+
+> 可比性约定：**同档位、同任务集、同 trial 数**才放在一张表里比；不同 harness 用同一 `--tasks/--trials`。
+> 单组合复现只是特例（`--combos` 里只写一个即可）。
+
 ## 快速开始
 
 ```bash
