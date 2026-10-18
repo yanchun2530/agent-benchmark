@@ -4,6 +4,8 @@
 
 📌 **三方交叉验证（2026-10-19）**：DS / Codex / DSH（deepseek-flash）三方对比与逐格数据 → [`results/low-comparison-3way-2026-10-19.md`](results/low-comparison-3way-2026-10-19.md)、[`results/dsh-low-2026-10-19.jsonl`](results/dsh-low-2026-10-19.jsonl)。
 
+📌 **DS 上游原样复跑（2026-10-19 晚）**：同 `4d011b1` 任务版本（与 Codex 同题、隔离 clone、未改任务）复跑 → 成功率 **8/9**、27m05s、756,040 token、**465 tok/s**；记录 [`results/dsv41-low-upstream-2026-10-19.jsonl`](results/dsv41-low-upstream-2026-10-19.jsonl)、四指标快照 [`results/summary-dsv41-low-upstream-2026-10-19.md`](results/summary-dsv41-low-upstream-2026-10-19.md)。
+
 测 **模型 × harness（opencode / codex / …）** 的组合：正确率（checker 判分）+ 速度（墙钟、tokens-per-solve）+（高档）真实仓库修复率。全部本地跑、可缩到单任务。
 
 ## 三档一览

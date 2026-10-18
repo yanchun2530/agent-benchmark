@@ -29,6 +29,20 @@
 | misleading-error | 2/3 · 6m38s · 175,925 · 442 tok/s | 3/3 · 1m01s · 44,131 · 723 tok/s | 3/3 · 0m43s · 16,945 · 393 tok/s |
 | **合计** | **7/9 · 22m44s · 557,719 · 409** | **9/9 · 4m56s · 182,190 · 616** | **9/9 · 5m31s · 146,792 · 443** |
 
+## 补充：DS 于上游原样任务复跑（2026-10-19 晚）
+
+为消除「DS 用可区分版、Codex 用上游原样版」的版本差异，DS（`opencode/deepseek-v4.1-flash-free` + opencode CLI）在**与 Codex 相同的上游 `4d011b1` 任务版本**上用隔离 clone 原样复跑 3×3：
+
+| 指标 | DS V4.1 Flash（上游原样） | Codex gpt-6-luna（同版本任务） |
+|---|---|---|
+| 原始 checker 成功率 | 8/9 | 9/9 |
+| 有区分度格成绩（misleading-error） | 2/3 | 3/3 |
+| 总耗时 | 27m05s | **4m56s** |
+| 总 token（非缓存 in+out） | 756,040 | **182,190** |
+| 速度 | 465 tok/s | **616 tok/s** |
+
+逐格记录：[`dsv41-low-upstream-2026-10-19.jsonl`](dsv41-low-upstream-2026-10-19.jsonl)；四指标：[`summary-dsv41-low-upstream-2026-10-19.md`](summary-dsv41-low-upstream-2026-10-19.md)。同样受「2 题无区分度」影响，8/9 中 6 格为送分。
+
 ## 口径与可比性
 
 1. **token**：非缓存输入 + 输出（含 reasoning）；cache read 单独报告。速度 = token ÷ 智能体墙钟。
