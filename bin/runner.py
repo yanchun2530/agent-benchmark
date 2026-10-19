@@ -27,6 +27,7 @@ import os
 import re
 import shutil
 import signal
+import sqlite3
 import subprocess
 import sys
 import time
@@ -34,6 +35,17 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TASKS_DIR = os.path.join(ROOT, "tasks")
 WORK_DIR = os.path.join(ROOT, "work")
+
+
+def set_work_dir(path: str) -> None:
+    """Point the per-cell workspaces outside the benchmark repo.
+
+    When cells live under the repo, opencode's project root is the repo root, so the
+    agent can (and did, on 2026-10-19) reach tasks/, solution/ and checker data. An
+    external work dir makes the run dir itself the project root.
+    """
+    global WORK_DIR
+    WORK_DIR = os.path.abspath(os.path.expanduser(path))
 RESULTS_DIR = os.path.join(ROOT, "results")
 
 SCORE_RE = re.compile(r"SCORE:\s*([0-9]*\.?[0-9]+)")
@@ -107,6 +119,33 @@ def overlay_solution(src_task: str, run_dir: str) -> None:
             shutil.copy2(s, d)
 
 
+def init_isolated_repo(run_dir: str) -> None:
+    """Pin the cell as its own git project root.
+
+    opencode resolves a session's project root from the git worktree; a plain
+    directory under an existing project can be mapped back to that project (on
+    2026-10-20 a cell ran with cwd ~/agent_benchmark instead of its own workspace,
+    which lets the agent read tasks/, solution/ and checker.sh). A local repo makes
+    the run dir the project root.
+    """
+    git = shutil.which("git")
+    if not git:
+        return
+    env = dict(
+        os.environ,
+        GIT_AUTHOR_NAME="bench",
+        GIT_AUTHOR_EMAIL="bench@local",
+        GIT_COMMITTER_NAME="bench",
+        GIT_COMMITTER_EMAIL="bench@local",
+    )
+    subprocess.run([git, "init", "-q"], cwd=run_dir, env=env,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run([git, "add", "-A"], cwd=run_dir, env=env,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run([git, "commit", "-qm", "bench baseline", "--no-gpg-sign"], cwd=run_dir, env=env,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 # --------------------------------------------------------------------------- exec
 def run_cmd(cmd: list[str], cwd: str, timeout_s: int, log_path: str, env: dict | None = None):
     """Run cmd, tee all output to log_path. Returns (rc, wall_s, timed_out, output)."""
@@ -114,7 +153,15 @@ def run_cmd(cmd: list[str], cwd: str, timeout_s: int, log_path: str, env: dict |
     timed_out = False
     full_env = dict(os.environ)
     if env:
-        full_env.update(env)
+        for k, v in env.items():
+            if v is None:
+                full_env.pop(k, None)
+            else:
+                full_env[k] = v
+    # python's cwd= does not update PWD; opencode resolves its location from $PWD,
+    # so a stale PWD makes the tested agent run in the parent shell's directory.
+    full_env["PWD"] = cwd
+    full_env.pop("OLDPWD", None)
     with open(log_path, "wb") as lf:
         proc = subprocess.Popen(
             cmd,
@@ -223,6 +270,105 @@ def extract_usage(text: str) -> dict:
     return found
 
 
+# ----------------------------------------------------------- subagent accounting
+SID_RE = re.compile(r'"sessionID"\s*:\s*"(ses_[A-Za-z0-9]+)"')
+
+
+def opencode_db_path() -> str:
+    """opencode v2 keeps sessions in a sqlite db (no OPENCODE_DB override => default)."""
+    return os.environ.get("OPENCODE_DB") or os.path.expanduser(
+        "~/.local/share/opencode/opencode.db"
+    )
+
+
+def main_session_id(agent_out: str) -> str | None:
+    m = SID_RE.search(agent_out or "")
+    return m.group(1) if m else None
+
+
+def collect_session_usage(main_sid: str, db_path: str | None = None) -> dict | None:
+    """Sum token usage of the main session plus every descendant (subagent) session.
+
+    `opencode run --format json` only prints step-finish events of the parent session;
+    agents launched through the `subagent` tool run in child sessions, so their tokens
+    are invisible to extract_usage(). Read them back from the sqlite session store and
+    aggregate along parent_id.
+    """
+    if not main_sid:
+        return None
+    path = db_path or opencode_db_path()
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        con = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=10)
+        con.row_factory = sqlite3.Row
+    except sqlite3.Error:
+        return None
+    rows: list[dict] = []
+    try:
+        seen = {main_sid}
+        frontier = [main_sid]
+        while frontier:
+            q = (
+                "SELECT id,parent_id,agent,model,tokens_input,tokens_output,"
+                "tokens_reasoning,tokens_cache_read FROM session_v2 WHERE id IN ("
+                + ",".join("?" * len(frontier))
+                + ")"
+            )
+            fetched = {r["id"]: dict(r) for r in con.execute(q, frontier).fetchall()}
+            rows.extend(fetched.values())
+            nxt = []
+            for r in fetched.values():
+                for c in con.execute(
+                    "SELECT id FROM session_v2 WHERE parent_id=?", (r["id"],)
+                ).fetchall():
+                    if c["id"] not in seen:
+                        seen.add(c["id"])
+                        nxt.append(c["id"])
+            frontier = nxt
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+    if not rows:
+        return None
+
+    def n(r, k):
+        return int(r.get(k) or 0)
+
+    sessions = [
+        {
+            "id": r["id"],
+            "parent_id": r["parent_id"],
+            "agent": r["agent"],
+            "model": r["model"],
+            "in": n(r, "tokens_input"),
+            # align with extract_usage(): output already includes reasoning there
+            "out": n(r, "tokens_output") + n(r, "tokens_reasoning"),
+            "reasoning": n(r, "tokens_reasoning"),
+            "cache": n(r, "tokens_cache_read"),
+        }
+        for r in rows
+    ]
+    subs = [s for s in sessions if s["id"] != main_sid]
+    return {
+        "sessions": sessions,
+        "sessions_total": len(sessions),
+        "sessions_subagent": len(subs),
+        "subagents": [
+            {"id": s["id"], "agent": s["agent"], "in": s["in"], "out": s["out"]} for s in subs
+        ],
+        "all_tokens_input": sum(s["in"] for s in sessions),
+        "all_tokens_output": sum(s["out"] for s in sessions),
+        "all_tokens_reasoning": sum(s["reasoning"] for s in sessions),
+        "all_tokens_cache_read": sum(s["cache"] for s in sessions),
+        "all_tokens_total": sum(s["in"] + s["out"] for s in sessions),
+        "subagent_tokens_input": sum(s["in"] for s in subs),
+        "subagent_tokens_output": sum(s["out"] for s in subs),
+        "subagent_tokens_total": sum(s["in"] + s["out"] for s in subs),
+    }
+
+
 def run_checker(src_task: str, run_dir: str, log_path: str):
     env = dict(os.environ)
     env["TASK_DIR"] = src_task
@@ -259,18 +405,23 @@ def harness_cmd(cfg: dict, model: str, workdir: str, prompt: str) -> list[str]:
 
 
 # --------------------------------------------------------------------------- cell
-def run_cell(tier, task, trial, harness_name, hcfg, model, tier_cfg, results_path, verbose):
+def run_cell(tier, task, trial, harness_name, hcfg, model, tier_cfg, results_path, verbose,
+             prompt_extra: str = "", agent_env: dict | None = None, session_accounting: bool = True,
+             isolated_repo: bool = True):
     src = task_dir(tier, task)
     run_dir = make_run_dir(tier, task, f"{harness_name}-t{trial}")
     log_dir = os.path.join(run_dir, ".bench")
     os.makedirs(log_dir, exist_ok=True)
     copy_workspace(src, run_dir)
+    if isolated_repo:
+        init_isolated_repo(run_dir)
 
-    prompt = build_prompt(src, tier_cfg)
+    prompt = build_prompt(src, tier_cfg) + (prompt_extra or "")
     timeout_s = int(tier_cfg.get("timeout_min", 30)) * 60
 
     agent_rc, agent_wall, agent_to, agent_out = (None, 0.0, False, "")
     usage = {}
+    session_usage = None
 
     if harness_name == "dry-none":
         pass
@@ -282,10 +433,18 @@ def run_cell(tier, task, trial, harness_name, hcfg, model, tier_cfg, results_pat
             raise SystemExit(
                 f"harness binary not found: {cmd[:1]} — set OPENCODE_BIN or install the CLI"
             )
+        # do not leak this session's opencode identity into the tested agent
+        cell_env = dict(agent_env or {})
+        for k in ("OPENCODE_SESSION_ID", "AI_AGENT", "OPENCODE", "OPENCODE_TERMINAL",
+                  "BILLION_CONTEXT_NATIVE"):
+            cell_env.setdefault(k, None)
         agent_rc, agent_wall, agent_to, agent_out = run_cmd(
-            cmd, run_dir, timeout_s, os.path.join(log_dir, "agent.log")
+            cmd, run_dir, timeout_s, os.path.join(log_dir, "agent.log"), cell_env
         )
         usage = extract_usage(agent_out)
+        session_usage = None
+        if session_accounting:
+            session_usage = collect_session_usage(main_session_id(agent_out))
 
     chk_rc, chk_wall, chk_to, chk_out, score = run_checker(
         src, run_dir, os.path.join(log_dir, "checker.log")
@@ -313,6 +472,24 @@ def run_cell(tier, task, trial, harness_name, hcfg, model, tier_cfg, results_pat
         "cost_usd": usage.get("cost_usd"),
         "run_dir": run_dir,
     }
+    if prompt_extra:
+        row["prompt_extra"] = prompt_extra
+    if session_usage:
+        row.update(
+            {
+                "sessions_total": session_usage["sessions_total"],
+                "sessions_subagent": session_usage["sessions_subagent"],
+                "subagents": session_usage["subagents"],
+                "all_tokens_input": session_usage["all_tokens_input"],
+                "all_tokens_output": session_usage["all_tokens_output"],
+                "all_tokens_reasoning": session_usage["all_tokens_reasoning"],
+                "all_tokens_cache_read": session_usage["all_tokens_cache_read"],
+                "all_tokens_total": session_usage["all_tokens_total"],
+                "subagent_tokens_input": session_usage["subagent_tokens_input"],
+                "subagent_tokens_output": session_usage["subagent_tokens_output"],
+                "subagent_tokens_total": session_usage["subagent_tokens_total"],
+            }
+        )
     os.makedirs(os.path.dirname(results_path), exist_ok=True)
     with open(results_path, "a") as f:
         f.write(json.dumps(row) + "\n")
@@ -320,6 +497,10 @@ def run_cell(tier, task, trial, harness_name, hcfg, model, tier_cfg, results_pat
     icon = "✅" if solved else ("⏱️" if (agent_to or chk_to) else "❌")
     extra = f" score={score:.2f}" if score is not None else ""
     tok = f" tok={row['tokens_total']}" if row["tokens_total"] else ""
+    if session_usage:
+        tok += f" all={session_usage['all_tokens_total']}"
+        if session_usage["sessions_subagent"]:
+            tok += f" sub={session_usage['sessions_subagent']}(+{session_usage['subagent_tokens_total']})"
     print(
         f"{icon} [{tier}/{task} t{trial}] {harness_name} wall={agent_wall:.0f}s{extra}{tok} -> {run_dir}",
         flush=True,
@@ -371,10 +552,23 @@ def main() -> int:
     ap.add_argument("--trials", type=int, default=None)
     ap.add_argument("--timeout-min", type=int, default=None)
     ap.add_argument("--results", default=None)
+    ap.add_argument("--prompt-extra", default="",
+                    help="extra text appended to the task prompt (recorded in results)")
+    ap.add_argument("--opencode-config", default=None,
+                    help="JSON file injected as OPENCODE_CONFIG_CONTENT for the agent process")
+    ap.add_argument("--no-session-accounting", action="store_true",
+                    help="do not add child/subagent session tokens to the record")
+    ap.add_argument("--work-dir", default=None,
+                    help="override work/ (keep cells outside the repo so the agent cannot reach tasks/)")
+    ap.add_argument("--no-isolated-repo", action="store_true",
+                    help="do not git-init each cell (cells may then inherit an enclosing project root)")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--selftest-tiers", default="low,mid")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
+
+    if args.work_dir:
+        set_work_dir(args.work_dir)
 
     tiers_all = load_json(os.path.join(ROOT, "config", "tiers.json"))
     harnesses = load_json(os.path.join(ROOT, "config", "harnesses.json"))
@@ -399,11 +593,22 @@ def main() -> int:
 
     print(f"== tier={args.tier} harness={args.harness} model={model} cells={len(cells)} ==")
     print(f"   results: {results_path}")
+    agent_env = None
+    if args.opencode_config:
+        with open(os.path.expanduser(args.opencode_config)) as f:
+            agent_env = {"OPENCODE_CONFIG_CONTENT": f.read()}
+        print(f"   opencode config injected: {args.opencode_config}")
+    if args.prompt_extra:
+        print(f"   prompt extra: {args.prompt_extra!r}")
+    if not args.no_session_accounting:
+        print("   session accounting: main + subagent child sessions")
     solved_n = 0
     t0 = time.time()
     for task, trial in cells:
         _row, ok = run_cell(
-            args.tier, task, trial, args.harness, hcfg, model, cfg, results_path, args.verbose
+            args.tier, task, trial, args.harness, hcfg, model, cfg, results_path, args.verbose,
+            args.prompt_extra, agent_env, not args.no_session_accounting,
+            not args.no_isolated_repo,
         )
         solved_n += int(ok)
     print(f"== done: {solved_n}/{len(cells)} solved in {time.time() - t0:.0f}s ==")

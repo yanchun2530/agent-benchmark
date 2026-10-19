@@ -175,6 +175,80 @@
 - **⚠ 墙钟口径**：`bin/summary.py` 原本用 `sum(agent_wall_s)` 算总耗时，对**并发** harness 会把重叠时段重复计算（MiniMax 两行会虚报成 29m20s / 21m04s）。已加法式修正：行内带 `end_to_end_wall_s` 时改用该值，现有文件行为不变。
 - **真区分提醒**：与其它方一样，上游 `4d011b1` 的 make-ci-green / add-feature 是 dry-none 送分，**只有 misleading-error 3 格真测模型**（M3 与 M3.1-Flash 均 3/3）。
 - **⚠ 作废记录**：早期几版（1-trial 演示、bash 单行替换的"抄答案"版、rough-est 版）已移入 [`results/_superseded/`](results/_superseded/)，**不要**喂给 `bin/report.py` / `bin/summary.py`（放子目录正是因为 `results/*.jsonl` 的 glob 不递归）。原因见该目录 README。
+## ⑤ DS V4.1 Flash「1017 新版」（2026-10-20）：多子agent 模式 + 全量记账
+
+> 口径变更（横向比较请读本节末对比表）：**旧记录 ①② = DS V4.1 Flash `1017 old` build，单主 agent、只记主 session**；
+> **本次 ④ = `1017` 更新后 build，显式 `#max`，多子agent 模式，记账 = 主 session + 全部子 session**。
+
+配置：
+
+| 项 | 值 |
+|---|---|
+| 被测模型 | `opencode/deepseek-v4.1-flash-free#max`（1017 新版；旧记录为 1017 old build） |
+| harness | opencode v2.0.32 `run --standalone --auto --format json`（同旧记录） |
+| 多子agent | `--opencode-config config/subagent-mode.json`（`subagent` 权限 allow）+ prompt 追加一行委派指令（记录在每行 JSONL 的 `prompt_extra`） |
+| 隔离修复 | 每格独立 git 工程 + 外部 work dir（`--work-dir /tmp/opencode/bench-work-20261020`）；修掉两个会让被测 agent 跑进 `~/agent_benchmark` 根目录（从而能读 `tasks/`、`checker.sh`）的 bug：`$PWD` 未随 `cwd=` 更新、work 目录嵌在仓库内 |
+| 记账 | `runner.py` 的 session-accounting：按 `parent_id` 汇总主 session + 子 session（新增字段 `all_tokens_*`、`sessions_subagent`、`subagents`） |
+| 任务版本 | 与 ②/GLM 同（上游原样 `4d011b1`，`git diff 4d011b1 HEAD -- tasks/` 为空）；selftest 复核：`make-ci-green`/`add-feature` dry-none 即通过（送分 6 格），唯一可区分题 `misleading-error` |
+| 原始记录 | `results/dsv41-low-1017new-multiagent-20261020.jsonl` |
+
+### 四指标（总）
+
+| 指标 | 值 |
+|---|---|
+| 🏆 成功率 | **9/9 = 100%**（唯一可区分题 `misleading-error` **3/3**） |
+| ⏱️ 总耗时 | **33m10s**（9 格，均 221s/格） |
+| 🪙 总 token（全量） | **1,116,852**（主 session 421,830 + 子 agent 618,150；in 889,438 / out 227,414 / cache 读 3,747,072） |
+| ⚡ 速度（全量） | **561 tok/s**（全量 token ÷ 智能体墙钟） |
+| 🧮 同旧口径（仅主 session） | 421,830 tok / 212 tok/s |
+| 🔎 子 agent | **24 个子 session，9/9 格发生委派**（每格 2–3 个 `explore`/`general`） |
+
+### 四指标（分任务 · 全量口径）
+
+| 任务 | 成功率 | 总耗时 | 总token | tok/s |
+|---|---|---|---|---|
+| add-feature | 3/3 = 100% | 15m14s | 564,259 | 618 |
+| make-ci-green | 3/3 = 100% | 12m11s | 325,860 | 446 |
+| misleading-error | 3/3 = 100% | 5m46s | 226,733 | 656 |
+| **合计** | **9/9 = 100%** | **33m10s** | **1,116,852** | **561** |
+
+（仅主 session 口径：add-feature 236,880 / make-ci-green 112,627 / misleading-error 72,323，合计 421,830）
+
+### 逐格明细
+
+| 题目 | trial | 结果 | 墙钟 | 主token | 全量token | 子agent |
+|---|---|---|---|---|---|---|
+| make-ci-green | 1 | ✅ | 70s | 42,616 | 71,490 | 3 (+25,242) |
+| make-ci-green | 2 | ✅ | 124s | 43,322 | 99,116 | 2 (+54,852) |
+| make-ci-green | 3 | ✅ | 537s | 26,689 | 155,254 | 2 (+125,369) |
+| add-feature | 1 | ✅ | 319s | 91,211 | 213,233 | 3 (+120,580) |
+| add-feature | 2 | ✅ | 286s | 49,924 | 189,838 | 3 (+99,350) |
+| add-feature | 3 | ✅ | 309s | 95,745 | 161,188 | 3 (+63,633) |
+| misleading-error | 1 | ✅ | 143s | 32,535 | 107,571 | 3 (+73,241) |
+| misleading-error | 2 | ✅ | 137s | 24,356 | 87,391 | 3 (+41,968) |
+| misleading-error | 3 | ✅ | 66s | 15,432 | 31,771 | 2 (+13,915) |
+
+### 七方对比（low · 上游原样 `4d011b1` · 均 3×3）
+
+| 模型 / build | harness | 成功率 | misleading-error（唯一可区分题） | 总耗时 | 总 token（非缓存 in+out） | tok/s |
+|---|---|---|---|---|---|---|
+| DS V4.1 Flash **1017 新版**（多子agent） | opencode v2.0.32 | **9/9 = 100%** | **3/3** | 33m10s | 1,116,852（全量）／421,830（主） | 561（全量）／212（主） |
+| DS V4.1 Flash **1017 old** | opencode v2.0.32 | 8/9 = 89% | 2/3 | 27m05s | 756,040 | 465 |
+| GLM-5.3 Flash | opencode v2.0.32 | 8/9 = 89% | 2/3 | 19m31s | 347,731 | 297 |
+| MiniMax-M3 | mavis worker（独立子会话/格） | 9/9 = 100% | 3/3 | 10m34s | 268,589 | 423 |
+| MiniMax-M3.1-Flash | mavis worker（独立子会话/格） | 9/9 = 100% | 3/3 | **7m37s** | 226,090 | 494 |
+| Codex gpt-6-luna | codex exec | 9/9* | 3/3 | **4m56s** | 182,190 | **616** |
+| DSH deepseek-flash | — | 9/9 | 3/3 | 5m31s | **146,792** | 443 |
+
+*Codex 9/9 中 6 格为无区分度送分；严格同题有效对比见 misleading-error 行。MiniMax 两行取自 ④（端到端口径）。
+
+### 观察
+
+- 唯一可区分题 `misleading-error` 由旧版 2/3 → 新版 3/3（首次满分）；两题送分题均 3/3。
+- **子 agent 占全量 token 的 55%**（618,150/1,116,852，24 个子 session）：只记主 session 会漏掉一半以上用量。这是「一定要统计到」的量化证据，也是本包 ④/⑤ 两套 harness 都在补的口径（MiniMax 侧按 session 真值汇总，opencode 侧按 `parent_id` 汇总）。
+- 速度两口径差异大：全量 561 tok/s（委派把 token 生成量抬高），主 session 口径 212 tok/s（墙钟被委派/验证占据）。
+- 抖动仍大：同题 66s–537s；`make-ci-green t3` 537s 且子 agent 花了 125k token，收益并不明显（该题本属送分）。
+- 复现：`bash bench.sh low --harness opencode --model 'opencode/deepseek-v4.1-flash-free#max' --trials 3 --results results/<name>.jsonl --opencode-config config/subagent-mode.json --work-dir /tmp/opencode/bench-work-XXXX --prompt-extra "<委派指令>"`；快照 `results/summary-dsv41-low-1017new-multiagent-20261020{,-tasks}.md`。
 
 ## 其他档位状态（截至 2026-10-19）
 

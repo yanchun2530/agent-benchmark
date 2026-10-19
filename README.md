@@ -1,5 +1,7 @@
 # agent_benchmark — 低/中/高三档 模型+Agent 基准包
 
+📌 **1017 新版 DS V4.1 Flash（2026-10-20）**：多子agent 模式 + 全量记账（主 session + 子 session）→ low 3×3 **9/9 · 33m10s · 1,116,852 token（主 421,830 + 子 agent 618,150）· 561 tok/s（全量）/ 212（主 session 口径）**；与「1017 old」（8/9 · 27m05s · 756,040 · 465）对比见 [`RESULTS.md`](RESULTS.md) ⑤；原始记录 [`results/dsv41-low-1017new-multiagent-20261020.jsonl`](results/dsv41-low-1017new-multiagent-20261020.jsonl)。
+
 📌 **低档实测（2026-10-19）**：[DS V4.1 Flash 与 Codex gpt-6-luna xhigh 对比](results/low-comparison-2026-10-19.md)；DS 原始记录见 [`RESULTS.md`](RESULTS.md)。
 
 📌 **三方交叉验证（2026-10-19）**：DS / Codex / DSH（deepseek-flash）三方对比与逐格数据 → [`results/low-comparison-3way-2026-10-19.md`](results/low-comparison-3way-2026-10-19.md)、[`results/dsh-low-2026-10-19.jsonl`](results/dsh-low-2026-10-19.jsonl)。
@@ -102,6 +104,8 @@ agent_benchmark/
 - **判分不怕作弊**：checker 用 `TASK_DIR` 内的干净副本跑测试（如 `make-ci-green` 的测试不取自 agent 工作区），exit 0 = 解决，可打印 `SCORE: 0..1` 部分分。
 - **隔离**：每题复制 `workspace/` 到独立工位目录跑，互不污染；超时按档位（`--timeout-min`）强杀进程组。
 - **数据记录**：每格一行 JSONL（含墙钟、agent 退出码、超时标志、tokens/cost 尽力解析）。`codex --json` / `opencode --format json` 的用量字段会被自动提取。
+- **多子agent 记账（2026-10-20 起）**：harness 只输出主 session 的 `step-finish`；`runner.py` 默认再按 session 树（`parent_id`）把子 session（`subagent` 工具派生的 `explore`/`general` 等）用量汇总为 `all_tokens_*` / `sessions_subagent` / `subagents` 字段，`summary.py` 同时给「全量」与「主 session（旧口径）」两组四指标。开关：`--no-session-accounting`。开多子agent：`--opencode-config config/subagent-mode.json`（`subagent` 权限 allow）+ `--prompt-extra "…委派指令…"`。
+- **工位隔离**：每格 `git init` 成独立工程（`--no-isolated-repo` 关闭），并用 `--work-dir` 把工位放到仓库外。否则 opencode 按 `$PWD`/工程根解析位置，被测 agent 会跑进外层仓库根目录并能直接读 `tasks/`、`checker.sh`（2026-10-19 的库污染事故即此类问题）。
 - **白盒可复现**：`selftest` 用 gold solution 验证 checker；`config/*.json` 改任务集、trial 数、超时、命令模板。
 
 ## 已知限制 / 注意
