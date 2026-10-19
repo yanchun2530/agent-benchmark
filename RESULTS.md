@@ -64,7 +64,7 @@
 - 复现（同配置）：`bash bench.sh low --harness opencode --model opencode/deepseek-v4.1-flash-free --trials 3`，随后 `bash bench.sh summary --tier low`。
 - 对比（换模型/harness）：`bash bench.sh matrix --tier low --combos "opencode:<模型A>,opencode:<模型B>,codex:<模型C>" --trials 3`，跑完自动出四指标对比表（或随时 `bash bench.sh compare --tier low`）。
 
-## ② 复跑：上游原样任务（2026-10-19 晚，隔离 clone）
+## ② 复跑：上游原样任务（2026-10-19 早，隔离 clone）
 
 环境：上游 `4d011b1` 全新 clone（任务与 Codex/DSH 跑分所用版本一致），agent 工位为该 clone 内的 `work/` 副本，不接触 `solution/`、`checker_data/`；harness / 模型 / 思考模式同 ①。
 
@@ -102,6 +102,64 @@
 
 > 快照：`results/summary-dsv41-low-upstream-2026-10-19.md`（总）、`...-tasks.md`（分任务）。
 > 同版本任务下的 Codex 对比见 [`results/low-comparison-3way-2026-10-19.md`](results/low-comparison-3way-2026-10-19.md) 末尾补充节。
+
+## ③ GLM-5.3 Flash Free：上游原样任务（2026-10-19 上午主跑 / 下午重测，隔离 clone）
+
+环境：上游 `4d011b1` 全新 clone（同 ② 口径，与 Codex/DSH 同题版本）；harness 同前（opencode CLI），模型 `opencode/glm-5.3-flash-free`（max 默认）。
+
+### 四指标（总）
+
+| 指标 | 值 |
+|---|---|
+| 🏆 成功率 | **8/9 = 89%**（唯一可区分题 `misleading-error` 2/3） |
+| ⏱️ 总耗时 | **19m31s**（9 格，均 130s/格） |
+| 🪙 总 token | **347,731**（in 309,761 / out 37,970；cache 读 2,334,784） |
+| ⚡ 速度 | **297 tok/s** |
+
+### 四指标（分任务）
+
+| 任务 | 成功率 | 总耗时 | 总token | tok/s |
+|---|---|---|---|---|
+| add-feature | 3/3 = 100% | 3m56s | 100,132 | 425 |
+| make-ci-green | 3/3 = 100% | 10m19s | 133,202 | 215 |
+| misleading-error | 2/3 = 67% | 5m16s | 114,397 | 362 |
+| **合计** | **8/9 = 89%** | **19m31s** | **347,731** | **297** |
+
+### 逐格明细
+
+| 题目 | trial | 结果 | 墙钟 | score | token(in/out) |
+|---|---|---|---|---|---|
+| add-feature | 1 | ✅ | 66s | 1.00 | 35,234 (33,829/1,405) |
+| add-feature | 2 | ✅ | 119s | 1.00 | 28,393 (24,246/4,147) |
+| add-feature | 3 | ✅ | 51s | 1.00 | 36,505 (33,502/3,003) |
+| make-ci-green | 1 | ✅ | 175s | 1.00 | 40,953 (35,922/5,031) |
+| make-ci-green | 2 | ✅ | 337s | 1.00 | 67,670 (54,474/13,196) |
+| make-ci-green | 3 | ✅ | 107s | 1.00 | 24,579 (21,458/3,121) |
+| misleading-error | 1 | ❌ | 61s | — | 30,556 (29,250/1,306) |
+| misleading-error | 2 | ✅ | 56s | — | 46,928 (46,109/819) |
+| misleading-error | 3 | ✅ | 199s | — | 36,913 (30,971/5,942) |
+
+> 记录：`results/glm53-low-2026-10-19.jsonl`；快照：`results/summary-glm53-low-2026-10-19{,-tasks}.md`。
+> misleading-error 取重测批 A 三格（见下方勘误节）；重测双批留档 `results/glm53-low-misleading-redo-2026-10-19.jsonl`。
+
+### 同题四方对比（low · 上游原样 · 均 3×3）
+
+| 指标 | GLM-5.3 Flash（opencode） | DS V4.1 Flash（opencode） | Codex gpt-6-luna | DSH deepseek-flash |
+|---|---|---|---|---|
+| checker 成功率 | 8/9 | 8/9 | 9/9* | 9/9 |
+| 总耗时 | **19m31s** | 27m05s | 4m56s | 5m31s |
+| 总 token（非缓存 in+out） | 347,731 | 756,040 | 182,190 | **146,792** |
+| tok/s | 297 | 465 | **616** | 443 |
+| misleading-error（唯一可区分题） | 2/3 | 2/3 | 3/3 | 3/3 |
+
+*Codex 9/9 中 6 格为无区分度送分；严格同题有效对比见 misleading-error 行。
+
+### 勘误：GLM 首批 misleading-error 三格假阳性（已剔除）
+
+- 现象：首批三格 5–6s 即 ✅，但 agent 进程 rc=1、0 token（opencode 调用瞬间失败、空跑）。
+- 根因链：**DS ② 批 t3 的 agent（06:16）跑出自己的工作目录，越界修改了 tasks/ 原题库** `workspace/settings.json`（`"rat"` → `"rate"`），污染了底座；GLM 批复制到已修复底座 + 空 agent ⇒ 判分假通过。
+- 处置：`git checkout` 还原底座 → 复验 dry-none 失败（区分度恢复）→ misleading-error 重测两批（批A 2/3、批B 3/3）；本节数据取批A。
+- 启示：**runner 应在每格前后校验 tasks/ 完整性**；DS 批内 t3 的 checker 判分不受影响（判分用的是其自身副本），但「t3 仅 33s 失败」当时未识别为可疑。
 
 ## 其他档位状态（截至 2026-10-19）
 
