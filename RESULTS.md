@@ -1,5 +1,8 @@
 # 实测结果 — DS V4.1 Flash（2026-10-19）
 
+> ⚠️ **build 标注**：本节 ①–③ 的 DS 记录均来自 **`1017 old` build**（单主 agent、只记主 session）。
+> **`1017` 更新后 build（显式 `#max`、多子agent、全量记账）的跑分见 ⑤ 节**（2026-10-20，9/9 · 33m10s · 1,116,852 token · 561 tok/s）。
+
 | 项 | 值 |
 |---|---|
 | 被测模型 | **DeepSeek V4.1 Flash**（`opencode/deepseek-v4.1-flash-free`） |
