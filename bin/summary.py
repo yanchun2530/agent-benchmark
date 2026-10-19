@@ -55,6 +55,14 @@ def metrics(rows: list[dict]) -> dict:
     solved = [r for r in graded if r.get("solved")]
     walls = [r["agent_wall_s"] for r in rows if r.get("agent_wall_s")]
     total_wall = sum(walls)
+    # Harnesses that run cells CONCURRENTLY (e.g. one independent sub-agent per
+    # cell) record the real span of the whole run in `end_to_end_wall_s`.
+    # Summing per-cell walls there would double-count the overlapping time, so
+    # prefer the recorded span when it is present. Rows without the field keep
+    # the original sum-of-walls behaviour.
+    e2e = [r["end_to_end_wall_s"] for r in rows if r.get("end_to_end_wall_s")]
+    if e2e:
+        total_wall = max(e2e)
     with_tok = [r for r in rows if r.get("tokens_total")]
     tok_total = sum(r["tokens_total"] for r in with_tok)
     return {

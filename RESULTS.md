@@ -161,6 +161,21 @@
 - 处置：`git checkout` 还原底座 → 复验 dry-none 失败（区分度恢复）→ misleading-error 重测两批（批A 2/3、批B 3/3）；本节数据取批A。
 - 启示：**runner 应在每格前后校验 tasks/ 完整性**；DS 批内 t3 的 checker 判分不受影响（判分用的是其自身副本），但「t3 仅 33s 失败」当时未识别为可疑。
 
+## ④ MiniMax-M3 / MiniMax-M3.1-Flash（MiniMax Code 桌面会话 · 独立 sub-agent harness）
+
+📌 **6 方完整对比表（DS / Codex / DSH / GLM / M3 / M3.1-Flash）** → [`results/low-comparison-6way-2026-10-19.md`](results/low-comparison-6way-2026-10-19.md)
+
+| 模型 | harness | 成功率 | 总耗时（端到端） | 总 token | tok/s | 原始记录 |
+|---|---|---|---|---|---|---|
+| `minimax/MiniMax-M3`（thinking） | 独立 mavis worker session（每格 fresh context） | **9/9 = 100%** | 10m34s | 268,589 | 423 | [`mclaude-low-3trial-realusage-2026-10-19.jsonl`](results/mclaude-low-3trial-realusage-2026-10-19.jsonl) |
+| `minimax/MiniMax-M3.1-Flash`（thinking / effort=default） | 同上 | **9/9 = 100%** | **7m37s** | **226,090** | **494** | [`mclaude-m31flash-low-3trial-2026-10-19.jsonl`](results/mclaude-m31flash-low-3trial-2026-10-19.jsonl) |
+
+- **协议**：与其它方完全一致（同一任务版本 `4d011b1`、3 题 × 3 trial、judge 用仓库原生 checker、父端复跑校验 `solved`）。每格 = 一个**全新的独立 mavis 子会话**，只见任务 instruction 与自己的 workspace 副本，不见其它 trial 的上下文。
+- **token/wall 是真值**：从 mavis runtime 的 `local_runtime_token_usage` 逐 session 汇总（非估算）。`agent_wall_s` = 每格墙钟；另有 `end_to_end_wall_s` = 全部 9 格的**真实端到端**跨度。
+- **⚠ 墙钟口径**：`bin/summary.py` 原本用 `sum(agent_wall_s)` 算总耗时，对**并发** harness 会把重叠时段重复计算（MiniMax 两行会虚报成 29m20s / 21m04s）。已加法式修正：行内带 `end_to_end_wall_s` 时改用该值，现有文件行为不变。
+- **真区分提醒**：与其它方一样，上游 `4d011b1` 的 make-ci-green / add-feature 是 dry-none 送分，**只有 misleading-error 3 格真测模型**（M3 与 M3.1-Flash 均 3/3）。
+- **⚠ 作废记录**：早期几版（1-trial 演示、bash 单行替换的"抄答案"版、rough-est 版）已移入 [`results/_superseded/`](results/_superseded/)，**不要**喂给 `bin/report.py` / `bin/summary.py`（放子目录正是因为 `results/*.jsonl` 的 glob 不递归）。原因见该目录 README。
+
 ## 其他档位状态（截至 2026-10-19）
 
 | 档 | 状态 |
